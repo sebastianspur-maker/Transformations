@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function verifiedEmail() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isStudent() {
+      return verifiedEmail()
+        && (
+          request.auth.token.email.matches('.*@s[.]michaelham[.]org[.]ar')
+          || request.auth.token.email == 'tablethijes@gmail.com'
+        );
+    }
+
+    function isTeacher() {
+      return verifiedEmail()
+        && request.auth.token.email.matches('.*@t[.]michaelham[.]org[.]ar');
+    }
+
+    function isSchoolUser() {
+      return isStudent() || isTeacher();
+    }
+
+    match /students/{userId} {
+      allow create, update: if isSchoolUser()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.isTeacher == isTeacher();
+
+      allow read: if isTeacher()
+        || (isStudent() && request.auth.uid == userId);
+
+      allow delete: if false;
+    }
+
+    match /practiceAttempts/{attemptId} {
+      allow create: if isStudent()
+        && request.resource.data.studentId == request.auth.uid;
+
+      allow read: if isTeacher()
+        || (isStudent() && resource.data.studentId == request.auth.uid);
+
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
